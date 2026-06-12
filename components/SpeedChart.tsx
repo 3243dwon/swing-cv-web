@@ -1,6 +1,7 @@
 "use client";
 
 import type { Analysis } from "@/lib/analysis";
+import { useInView } from "./useInView";
 
 // Nose-to-ankle (our normalization unit) ≈ 0.89 × standing height.
 const M_PER_BH = 0.89;
@@ -18,6 +19,7 @@ export default function SpeedChart({
   heightCm: number;
   onHeightCm: (v: number) => void;
 }) {
+  const { ref, inView } = useInView<HTMLDivElement>(0.25);
   const sp = analysis.speed;
   if (!sp) return null;
 
@@ -62,7 +64,7 @@ export default function SpeedChart({
     ) : null;
 
   return (
-    <div>
+    <div ref={ref}>
       <div className="statrow">
         <div className="stat">
           <div className="k">Peak hand speed</div>
@@ -112,12 +114,19 @@ export default function SpeedChart({
         </text>
         {marker(analysis.times.top, "top")}
         {marker(analysis.times.impact, "impact")}
-        <path d={area} fill="url(#spfill)" />
-        <path d={line} className="trace tracer" />
-        <circle cx={X(sp.peakT)} cy={Y(peakMph)} r="4" className="peak" />
-        <text x={Math.min(X(sp.peakT) + 6, W - 70)} y={Y(peakMph) - 6} className="axis bright">
-          peak
-        </text>
+        <path d={area} fill="url(#spfill)" style={{ opacity: inView ? 1 : 0, transition: "opacity 0.9s ease 0.9s" }} />
+        <path
+          d={line}
+          className="trace tracer"
+          pathLength={100}
+          style={{ strokeDasharray: 100, strokeDashoffset: inView ? 0 : 100, transition: "stroke-dashoffset 1.4s ease 0.1s" }}
+        />
+        <g style={{ opacity: inView ? 1 : 0, transition: "opacity 0.5s ease 1.2s" }}>
+          <circle cx={X(sp.peakT)} cy={Y(peakMph)} r="4" className="peak" />
+          <text x={Math.min(X(sp.peakT) + 6, W - 70)} y={Y(peakMph) - 6} className="axis bright">
+            peak
+          </text>
+        </g>
       </svg>
 
       <p className="note">

@@ -15,6 +15,9 @@ import Player from "@/components/Player";
 import SpeedChart from "@/components/SpeedChart";
 import SequenceCard from "@/components/SequenceCard";
 import ConsistencyCard from "@/components/ConsistencyCard";
+import ScrubHero from "@/components/ScrubHero";
+import Reveal from "@/components/Reveal";
+import CountUp from "@/components/CountUp";
 
 type Stage = "idle" | "model" | "scanning" | "processing" | "done" | "error";
 type Still = { name: PhaseName; time: number; url: string };
@@ -143,7 +146,7 @@ export default function Page() {
         src: "",
         fileName: "demo.mov",
         win: { start: 0, end: 3.2 },
-        extraction: { frames: new Array(n).fill(null), times: t, fps, width: 360, height: 640 },
+        extraction: { frames: new Array(n).fill(null), times: t, fps, width: 360, height: 640, scrubs: [] },
         analysis,
         stills: PHASES.map((nm, i) => ({ name: nm, time: [0.47, 1.3, 1.63, 2.2][i], url: mk(PHASE_LABEL[nm]) })),
       };
@@ -206,7 +209,7 @@ export default function Page() {
           setPct(0);
           setBusy(`Swing ${results.length + 1} — tracking your body…`);
           try {
-            const extraction = await extractLandmarks(video, lm, setPct, { window: win });
+            const extraction = await extractLandmarks(video, lm, setPct, { window: win, scrubWidth: 480 });
             const analysis = analyzeSwing(extraction.frames, extraction.fps, extraction.times);
             if (!analysis.quality.ok) {
               skips.push(`${fmtT(win.start)} in ${file.name}: ${analysis.quality.reason}`);
@@ -266,7 +269,15 @@ export default function Page() {
           SWING<span className="dot">·</span>CV
         </h1>
         <svg className="arc" viewBox="0 0 220 26" aria-hidden="true">
-          <path d="M6 22 Q 110 -14 214 22" fill="none" stroke="url(#arcg)" strokeWidth="2.5" strokeLinecap="round" />
+          <path
+            className="arcdraw"
+            d="M6 22 Q 110 -14 214 22"
+            fill="none"
+            stroke="url(#arcg)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            pathLength={100}
+          />
           <defs>
             <linearGradient id="arcg" x1="0" x2="1">
               <stop offset="0%" stopColor="rgba(255,176,86,0)" />
@@ -277,6 +288,11 @@ export default function Page() {
           <circle cx="214" cy="22" r="3" fill="#4ce17e" />
         </svg>
         <p>On-device swing lab — positions, tempo, speed &amp; sequence. Nothing uploads.</p>
+        <div className="hudrow" aria-hidden="true">
+          <span className="hud">ON-DEVICE</span>
+          <span className="hud">POSE · 33 PTS</span>
+          <span className="hud">NO UPLOAD</span>
+        </div>
       </header>
 
       <video ref={procRef} className="hidden" playsInline muted />
@@ -332,103 +348,114 @@ export default function Page() {
             </div>
           )}
 
-          <div className="card playercard">
-            {cur.src ? (
-              <Player src={cur.src} win={cur.win} extraction={cur.extraction} analysis={cur.analysis} seekSignal={seekSig} />
-            ) : (
-              <div className="demobox">Demo mode — load a real clip to get the slow-mo player with skeleton &amp; hand tracer.</div>
-            )}
-          </div>
+          <ScrubHero key={cur.id} extraction={cur.extraction} analysis={cur.analysis} />
 
-          <div className="frames">
-            {cur.stills.map((s) => (
-              <button
-                className="frame"
-                key={s.name}
-                onClick={() => setSeekSig((p) => ({ t: s.time, n: (p?.n ?? 0) + 1 }))}
-                title="jump the player here"
-              >
-                <img src={s.url} alt={PHASE_LABEL[s.name]} />
-                <span className="tag">{PHASE_LABEL[s.name]}</span>
-                <span className="t num">{s.time.toFixed(2)}s</span>
-              </button>
-            ))}
-          </div>
+          <Reveal>
+            <div className="card playercard">
+              {cur.src ? (
+                <Player src={cur.src} win={cur.win} extraction={cur.extraction} analysis={cur.analysis} seekSignal={seekSig} />
+              ) : (
+                <div className="demobox">Demo mode — load a real clip to get the slow-mo player with skeleton &amp; hand tracer.</div>
+              )}
+            </div>
+          </Reveal>
+
+          <Reveal delay={80}>
+            <div className="frames">
+              {cur.stills.map((s) => (
+                <button
+                  className="frame"
+                  key={s.name}
+                  onClick={() => setSeekSig((p) => ({ t: s.time, n: (p?.n ?? 0) + 1 }))}
+                  title="jump the player here"
+                >
+                  <img src={s.url} alt={PHASE_LABEL[s.name]} />
+                  <span className="tag">{PHASE_LABEL[s.name]}</span>
+                  <span className="t num">{s.time.toFixed(2)}s</span>
+                </button>
+              ))}
+            </div>
+          </Reveal>
 
           {cur.analysis.speed && (
-            <>
+            <Reveal>
               <div className="section-title">Hand speed</div>
               <div className="card">
                 <SpeedChart analysis={cur.analysis} heightCm={heightCm} onHeightCm={setHeightCm} />
               </div>
-            </>
+            </Reveal>
           )}
 
           {cur.analysis.sequence && (
-            <>
+            <Reveal>
               <div className="section-title">Kinematic sequence · experimental</div>
               <div className="card">
                 <SequenceCard analysis={cur.analysis} />
               </div>
-            </>
+            </Reveal>
           )}
 
-          <div className="section-title">Reliable metrics</div>
-          <div className="metrics">
-            <div className="metric">
-              <div className="k">Tempo</div>
-              <div className="v num">
-                {Number.isNaN(m.tempoRatio) ? "—" : m.tempoRatio.toFixed(1)} <small>: 1 · smooth ≈ 3:1</small>
+          <Reveal>
+            <div className="section-title">Reliable metrics</div>
+            <div className="metrics">
+              <div className="metric">
+                <div className="k">Tempo</div>
+                <div className="v num">
+                  {Number.isNaN(m.tempoRatio) ? "—" : <CountUp value={m.tempoRatio} decimals={1} />}{" "}
+                  <small>: 1 · smooth ≈ 3:1</small>
+                </div>
+              </div>
+              <div className="metric">
+                <div className="k">Camera (auto)</div>
+                <div className="v" style={{ fontSize: 16 }}>
+                  {m.view}
+                </div>
+              </div>
+              <div className="metric">
+                <div className="k">Head sway (lateral)</div>
+                <div className="v num">
+                  <CountUp value={m.headSwayPct} />
+                  <small>% of height</small>
+                </div>
+              </div>
+              <div className="metric">
+                <div className="k">Head move (vertical)</div>
+                <div className="v num">
+                  <CountUp value={m.headVertPct} />
+                  <small>% of height</small>
+                </div>
               </div>
             </div>
-            <div className="metric">
-              <div className="k">Camera (auto)</div>
-              <div className="v" style={{ fontSize: 16 }}>
-                {m.view}
-              </div>
-            </div>
-            <div className="metric">
-              <div className="k">Head sway (lateral)</div>
-              <div className="v num">
-                {m.headSwayPct.toFixed(0)}
-                <small>% of height</small>
-              </div>
-            </div>
-            <div className="metric">
-              <div className="k">Head move (vertical)</div>
-              <div className="v num">
-                {m.headVertPct.toFixed(0)}
-                <small>% of height</small>
-              </div>
-            </div>
-          </div>
+          </Reveal>
           <p className="note" style={{ marginTop: 10 }}>
             Backswing {m.backswingS.toFixed(2)}s · downswing {m.downswingS.toFixed(2)}s · pose tracked in{" "}
             {cur.analysis.detectedPct.toFixed(0)}% of frames. Rough (view-sensitive): spine tilt{" "}
             {m.spineAddrDeg.toFixed(0)}° → {m.spineTopDeg.toFixed(0)}° → {m.spineImpactDeg.toFixed(0)}°.
           </p>
 
-          <div className="section-title">Faults that actually cost strokes</div>
-          {cur.analysis.faults.length > 0 ? (
-            cur.analysis.faults.map((f) => (
-              <div className="flag" key={f.title}>
-                <div className="icon">!</div>
+          <Reveal>
+            <div className="section-title">Faults that actually cost strokes</div>
+            {cur.analysis.faults.length > 0 ? (
+              cur.analysis.faults.map((f) => (
+                <div className="flag" key={f.title}>
+                  <div className="icon">!</div>
+                  <div className="body">
+                    <div className="t">{f.title}</div>
+                    <div className="d">→ causes {f.mishit}</div>
+                    <div className="d">{f.detail}</div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="flag good">
+                <div className="icon">✓</div>
                 <div className="body">
-                  <div className="t">{f.title}</div>
-                  <div className="d">→ causes {f.mishit}</div>
-                  <div className="d">{f.detail}</div>
+                  <div className="t">None the camera can see</div>
+                  <div className="d">Strike-wise, the swing looks sound.</div>
                 </div>
               </div>
-            ))
-          ) : (
-            <div className="flag good">
-              <div className="icon">✓</div>
-              <div className="body">
-                <div className="t">None the camera can see</div>
-                <div className="d">Strike-wise, the swing looks sound.</div>
-              </div>
-            </div>
-          )}
+            )}
+          </Reveal>
 
           {cur.analysis.notes.length > 0 && (
             <>
@@ -442,16 +469,17 @@ export default function Page() {
           )}
 
           {swings.length > 1 && (
-            <>
+            <Reveal>
               <div className="section-title">
                 Consistency across {swings.length} swings — the metric that actually tracks skill
               </div>
               <div className="card">
                 <ConsistencyCard analyses={swings.map((s) => s.analysis)} heightCm={heightCm} onSelect={setSel} />
               </div>
-            </>
+            </Reveal>
           )}
 
+          <Reveal>
           <div className="section-title">What to actually work on</div>
           <div className="card">
             {cur.analysis.faults.length > 0 ? (
@@ -469,6 +497,7 @@ export default function Page() {
               </p>
             )}
           </div>
+          </Reveal>
 
           {skipped.length > 0 && (
             <p className="note">Skipped: {skipped.join(" · ")}</p>

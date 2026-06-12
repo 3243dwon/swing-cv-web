@@ -1,6 +1,7 @@
 "use client";
 
 import type { Analysis } from "@/lib/analysis";
+import { useInView } from "./useInView";
 
 const COLOR: Record<string, string> = {
   pelvis: "#62d6ff",
@@ -10,6 +11,7 @@ const COLOR: Record<string, string> = {
 const NAME: Record<string, string> = { pelvis: "Pelvis", torso: "Torso", hands: "Hands" };
 
 export default function SequenceCard({ analysis }: { analysis: Analysis }) {
+  const { ref, inView } = useInView<HTMLDivElement>(0.25);
   const seq = analysis.sequence;
   if (!seq) return null;
 
@@ -47,17 +49,35 @@ export default function SequenceCard({ analysis }: { analysis: Analysis }) {
   const xf = analysis.xfactor;
 
   return (
-    <div>
+    <div ref={ref}>
       <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="kinematic sequence">
         <line x1={X(analysis.times.impact)} y1={padT} x2={X(analysis.times.impact)} y2={H - padB} className="vline" />
         <text x={X(analysis.times.impact) + 4} y={padT + 9} className="axis">
           impact
         </text>
-        {paths.map((p) => (
-          <path key={p.key} d={p.d!} className="trace" style={{ stroke: COLOR[p.key] }} />
+        {paths.map((p, i) => (
+          <path
+            key={p.key}
+            d={p.d!}
+            className="trace"
+            pathLength={100}
+            style={{
+              stroke: COLOR[p.key],
+              strokeDasharray: 100,
+              strokeDashoffset: inView ? 0 : 100,
+              transition: `stroke-dashoffset 1.2s ease ${0.15 + i * 0.25}s`,
+            }}
+          />
         ))}
         {seq.peaks.map((p) => (
-          <circle key={p.name} cx={X(p.t)} cy={Y(1)} r="4" fill={COLOR[p.name]} />
+          <circle
+            key={p.name}
+            cx={X(p.t)}
+            cy={Y(1)}
+            r="4"
+            fill={COLOR[p.name]}
+            style={{ opacity: inView ? 1 : 0, transition: "opacity 0.5s ease 1.5s" }}
+          />
         ))}
       </svg>
 

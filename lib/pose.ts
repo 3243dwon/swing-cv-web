@@ -34,7 +34,15 @@ function seekTo(video: HTMLVideoElement, t: number): Promise<void> {
   });
 }
 
-export type Extraction = { frames: Frame[]; times: number[]; fps: number; width: number; height: number };
+export type ScrubFrame = { idx: number; url: string };
+export type Extraction = {
+  frames: Frame[];
+  times: number[];
+  fps: number;
+  width: number;
+  height: number;
+  scrubs: ScrubFrame[];
+};
 export type SwingWindow = { start: number; end: number };
 
 // MediaPipe VIDEO mode needs strictly increasing timestamps for the lifetime of
@@ -47,7 +55,7 @@ export async function extractLandmarks(
   video: HTMLVideoElement,
   landmarker: Landmarker,
   onProgress: (pct: number) => void,
-  opts: { sampleFps?: number; maxFrames?: number; window?: SwingWindow } = {}
+  opts: { sampleFps?: number; maxFrames?: number; window?: SwingWindow; scrubWidth?: number } = {}
 ): Promise<Extraction> {
   const duration = video.duration;
   const width = video.videoWidth;
@@ -69,7 +77,18 @@ export async function extractLandmarks(
   const epoch = tsEpoch;
   const frames: Frame[] = [];
   const times: number[] = [];
+  const scrubs: ScrubFrame[] = [];
   let lastTs = epoch - 1;
+
+  // Downscaled stills captured along the way power the scroll-scrub hero —
+  // no video seeking needed at scroll time.
+  let scrubCanvas: HTMLCanvasElement | null = null;
+  const scrubEvery = opts.scrubWidth ? Math.max(1, Math.ceil(nSamples / 28)) : 0;
+  if (opts.scrubWidth) {
+    scrubCanvas = document.createElement("canvas");
+    scrubCanvas.width = opts.scrubWidth;
+    scrubCanvas.height = Math.round((opts.scrubWidth * height) / Math.max(1, width));
+  }
 
   for (let i = 0; i < nSamples; i++) {
     const t = start + i * step;
@@ -85,11 +104,18 @@ export async function extractLandmarks(
     }
     frames.push(res.landmarks && res.landmarks.length ? res.landmarks[0] : null);
     times.push(t);
+    if (scrubCanvas && scrubEvery && i % scrubEvery === 0) {
+      const ctx = scrubCanvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, scrubCanvas.width, scrubCanvas.height);
+        scrubs.push({ idx: i, url: scrubCanvas.toDataURL("image/jpeg", 0.7) });
+      }
+    }
     onProgress(Math.round(((i + 1) / nSamples) * 100));
   }
 
   tsEpoch = lastTs + 1000;
-  return { frames, times, fps, width, height };
+  return { frames, times, fps, width, height, scrubs };
 }
 
 // Capture a single frame (by absolute time) into a canvas for display.
