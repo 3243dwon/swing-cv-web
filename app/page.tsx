@@ -16,6 +16,7 @@ import SpeedChart from "@/components/SpeedChart";
 import SequenceCard from "@/components/SequenceCard";
 import ConsistencyCard from "@/components/ConsistencyCard";
 import ScrubHero from "@/components/ScrubHero";
+import GhostHero from "@/components/GhostHero";
 import Reveal from "@/components/Reveal";
 import CountUp from "@/components/CountUp";
 
@@ -320,6 +321,102 @@ export default function Page() {
       {error && (
         <div className="card">
           <div className="error">{error}</div>
+        </div>
+      )}
+
+      {stage === "idle" && (
+        <div className="landing">
+          <h2 className="landinghead">
+            See your swing like a <span>broadcast</span>.
+          </h2>
+          <p className="landingsub">
+            Skeleton, hand tracer, tempo, speed and sequence — extracted from a phone clip, in your browser.
+          </p>
+
+          <GhostHero />
+
+          <section className="bigstats">
+            <Reveal>
+              <div className="bigstat">
+                <div className="bignum">~2/3</div>
+                <p>
+                  of the amateur scoring gap is the <b>long game</b> — approach above all. Putting separates
+                  surprisingly little. This tool tells you when your swing isn&apos;t the real leak. (Broadie,
+                  strokes-gained)
+                </p>
+              </div>
+            </Reveal>
+            <Reveal delay={70}>
+              <div className="bigstat">
+                <div className="bignum">r = 0.801</div>
+                <p>
+                  skill tracks how well you repeat <b>your own</b> swing — not how closely you copy a model. Measured
+                  with the same 2D pose method this app uses. Film 3+ swings and it measures exactly that.
+                </p>
+              </div>
+            </Reveal>
+            <Reveal delay={140}>
+              <div className="bigstat">
+                <div className="bignum">0</div>
+                <p>
+                  uploads. The pose model runs <b>inside your browser</b> — your video never leaves the device. No
+                  account, no tracking, no cloud.
+                </p>
+              </div>
+            </Reveal>
+          </section>
+
+          <Reveal>
+            <div className="section-title">What you get from one clip</div>
+            <div className="featrow">
+              <div className="featcard">
+                <svg viewBox="0 0 120 70" aria-hidden="true">
+                  <path className="minidraw" d="M14 60 C30 56 38 30 52 18 C60 11 70 12 78 22 C88 35 98 52 108 56" fill="none" stroke="#ffb056" strokeWidth="2.5" strokeLinecap="round" pathLength={100} />
+                  <circle cx="52" cy="18" r="3.5" fill="#ffb056" />
+                </svg>
+                <div className="t">Slow-mo + tracer</div>
+                <div className="d">Skeleton and hand path drawn over your video. 0.25×, frame-step, jump to impact.</div>
+              </div>
+              <div className="featcard">
+                <svg viewBox="0 0 120 70" aria-hidden="true">
+                  <path className="minidraw" d="M12 58 C36 54 48 24 62 16" fill="none" stroke="#62d6ff" strokeWidth="2.5" strokeLinecap="round" pathLength={100} />
+                  <path className="minidraw d2" d="M28 60 C52 56 66 28 80 19" fill="none" stroke="#4ce17e" strokeWidth="2.5" strokeLinecap="round" pathLength={100} />
+                  <path className="minidraw d3" d="M44 62 C70 58 86 32 100 22" fill="none" stroke="#ffb056" strokeWidth="2.5" strokeLinecap="round" pathLength={100} />
+                </svg>
+                <div className="t">Speed &amp; sequence</div>
+                <div className="d">Hand-speed curve in ~mph and the pelvis → torso → hands firing order, honestly labeled.</div>
+              </div>
+              <div className="featcard">
+                <svg viewBox="0 0 120 70" aria-hidden="true">
+                  <rect x="14" y="40" width="18" height="20" rx="2" fill="rgba(76,225,126,0.55)" />
+                  <rect x="40" y="30" width="18" height="30" rx="2" fill="rgba(76,225,126,0.75)" />
+                  <rect x="66" y="36" width="18" height="24" rx="2" fill="rgba(76,225,126,0.65)" />
+                  <rect x="92" y="14" width="18" height="46" rx="2" fill="#ffb056" />
+                </svg>
+                <div className="t">Consistency</div>
+                <div className="d">Film several swings — or one long range video — and see which number wobbles most.</div>
+              </div>
+            </div>
+          </Reveal>
+
+          <Reveal>
+            <blockquote className="manifesto">
+              It will not invent a flaw to sound smart. It will not grade you against a &ldquo;perfect swing&rdquo; that
+              doesn&apos;t exist. It cannot see your club face — <em>and it says so.</em> What it measures, it measures
+              honestly.
+            </blockquote>
+          </Reveal>
+
+          <Reveal>
+            <div className="cta2">
+              <button className="btn" onClick={() => fileRef.current?.click()}>
+                🎥&ensp;Analyze your swing
+              </button>
+              <p className="hint">2–5 second clip · or a full range session — it finds every swing.</p>
+            </div>
+          </Reveal>
+
+          <p className="footer">Swing·CV · on-device pose via MediaPipe · no upload · no account</p>
         </div>
       )}
 

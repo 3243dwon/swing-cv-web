@@ -124,7 +124,7 @@ export default function ScrubHero({ extraction, analysis }: { extraction: Extrac
   const ar = extraction.width / Math.max(1, extraction.height);
 
   return (
-    <section ref={sectionRef} className="scrub">
+    <section ref={sectionRef} className="scrubsec">
       <div className="pin">
         <div
           ref={stageRef}
