@@ -223,7 +223,8 @@ export function flagFaults(m: Metrics): Fault[] {
   // Hip sway is only meaningful face-on (it's a target-line metric); on a down-the-line
   // clip the horizontal number is noise, so the hip arm of this fault is gated to face-on
   // — head vertical/lateral travel still fires from any view.
-  if (m.headSwayPct > 15 || (m.view === "face-on" && Math.abs(m.hipSwayBackPct) > 18))
+  const swayFired = m.headSwayPct > 15 || (m.view === "face-on" && Math.abs(m.hipSwayBackPct) > 18);
+  if (swayFired)
     f.push({
       title: "Excess lateral sway · 横向晃动过大",
       mishit:
@@ -253,16 +254,61 @@ export function flagFaults(m: Metrics): Fault[] {
       fix: "Let the sequence build the speed rather than hitting hard from the top — an unhurried transition, like Rory McIlroy's, lets the pelvis → torso → hands chain load in order. Count '1-2' going back, '1' coming down (~3:1), and pause a hair at the top before you start down. Re-film; tempo drifting toward 3:1 with crisper contact. 让发力顺序去产生速度，而不是从顶点猛抽一下——像罗里·麦克罗伊那样不慌不忙的转换，能让骨盆 → 躯干 → 手依次蓄力。上杆数「1-2」、下杆数「1」（约 3:1），到顶点稍停一丁点再下杆。重拍，节奏往 3:1 靠、触球更扎实。",
       focus: "tempo",
     });
+  // Hips sliding past the ball at impact — a target-line (face-on) metric like the sway
+  // arm above, so it's gated to face-on. Suppressed when the sway fault already fired, so
+  // one swing never carries two overlapping "you moved laterally" flags (the app's own
+  // "one focus per session" rule). It's a contact killer, so it lives with the strike
+  // faults and relates to a reported thin/fat via applyOutcome's STRIKE_FOCUS match.
+  if (!swayFired && m.view === "face-on" && m.hipSlideImpactPct > 22)
+    f.push({
+      title: "Hips slide past the ball instead of turning · 髋部侧滑过球（而非转动）",
+      mishit:
+        "your hips drift toward the target through impact instead of rotating around, so the low point of the arc slides with them and your hands get left behind — that shows up as pushes, blocks, thin/fat contact and lost speed. 触球时你的髋向目标平移而不是绕轴转动，弧线最低点跟着滑走、双手被落在后面——表现为推球、block、打薄/打肥和速度流失。",
+      detail: `hips slide about ${m.hipSlideImpactPct.toFixed(0)}% of body height toward the target by impact — strong turners keep it modest and rotate instead. Lateral position is a face-on estimate, so treat it as a checkpoint. 触球时髋向目标侧滑约 ${m.hipSlideImpactPct.toFixed(0)}%（占身高）——转动好的球手侧移不大、主要靠旋转。侧向位置是正面视角的估算，请当作检查点。`,
+      fix: "Feel your lead hip clear behind you — turn the belt buckle open rather than shoving it toward the target. Drill: swing with a chair or bag just outside your lead hip and turn without bumping into it, head still over the ball. Re-film face-on; more turn, less slide, steadier contact is the win. 感觉前侧髋向身后转开——把皮带扣转开，而不是把它推向目标。练习：在前侧髋外侧放一把椅子或球包，转身时别撞到它，头保持在球上方不动。正面视角重拍——转多一点、滑少一点、触球更稳就说明对了。",
+      focus: "strike consistency",
+    });
+  // Posture faults — the teacher pass. These are the two spine signals that were only
+  // ever hedged watch-notes (watchNotes below), promoted to a fault WITH a drill, but
+  // only when the view can actually see the move and the angle clears a clear bar (the
+  // softer/borderline cases stay notes, so nothing double-shows). Spine angle is a
+  // depth-sensitive single-camera estimate, so the copy frames each as a checkpoint,
+  // and the UI still withholds the drill on a low-confidence track (page.tsx `!lowConf`).
+  // Early extension — torso stands up and the hips thrust toward the ball through impact —
+  // reads down-the-line; face-on the same number is normal side-bend, so we don't fault it there.
+  if (m.view === "down-the-line" && m.secondaryTiltDeg > 20)
+    f.push({
+      title: "Standing up out of posture (early extension) · 起身离位（early extension，提前伸展）",
+      mishit:
+        "through impact your hips push in toward the ball and your chest lifts, so your arms run out of room and have to flip or stall — a prime source of thins, shanks and two-way misses, and the move a down-the-line camera catches most in amateurs. 触球时你的髋顶向球、胸口抬起，手臂没了空间只能翻手或卡住——这是打薄、shank 和左右乱飞的主要来源，也是后方视角最常在业余球手身上拍到的一个动作。",
+      detail: `spine stands up about ${m.secondaryTiltDeg.toFixed(0)}° from address to impact — good players hold that change under ~10°. It's a depth-sensitive single-camera estimate, so treat it as a checkpoint, not a verdict. 脊柱从瞄球到触球起身了约 ${m.secondaryTiltDeg.toFixed(0)}°——好球手把这个变化控制在约 10° 以内。这是受深度影响的单摄像头估算，请当作检查点、而非定论。`,
+      fix: "Keep your backside 'against the wall' through impact instead of thrusting toward the ball. Set up with your trail hip lightly touching a chair (or a stick in the ground) and swing without pushing off it — feel the hips clear behind you and your chest stay down over the ball, the way Adam Scott holds his posture. Re-film down-the-line; the stand-up dropping under ~10° with crisper contact is the win. 触球时让臀部像「贴着墙」，别顶向球。在后侧髋轻轻贴一把椅子（或插一根杆）站好，挥杆时别把它顶开——感觉髋向身后转开、胸口一直压在球上方，像亚当·斯科特那样保持体态。用后方视角重拍——起身量压到约 10° 以内、触球更扎实就说明对了。",
+      focus: "posture",
+    });
+  // Reverse pivot — upper body tilting toward the target at the top — reads face-on;
+  // down-the-line that lateral lean is lost to depth, so we only fault it face-on.
+  if (m.view === "face-on" && m.reverseSpineDeg > 14)
+    f.push({
+      title: "Reverse pivot — leaning toward the target at the top · 反向重心（顶点倒向目标）",
+      mishit:
+        "at the top your upper body tilts toward the target instead of loading behind the ball, so your weight hangs on the lead foot and you fall backward coming down — the recipe for weak, high, fat-or-thin strikes and lost power. 上杆顶点时你的上半身倒向目标、没有压到球后方，重心挂在前脚上，下杆时向后倒——这会打出无力、偏高、打肥或打薄的球，也丢了距离。",
+      detail: `your spine leans about ${m.reverseSpineDeg.toFixed(0)}° toward the target at the top — a loaded backswing tilts slightly away from it. Single-camera tilt is an estimate, so read this as a checkpoint. 上杆顶点时脊柱约倒向目标 ${m.reverseSpineDeg.toFixed(0)}°——蓄好力的上杆会略微倒向远离目标的一侧。单摄像头的倾角只是估算，请当作检查点。`,
+      fix: "Feel your weight move into your trail heel as you turn back, so your spine tilts a touch AWAY from the target at the top — the stacked, loaded-behind-the-ball look of a tour backswing. Drill it slow: half-speed backswings, pause at the top, and check the pressure is under your trail foot before you start down. Re-film face-on; the lean flipping to slightly away from the target is the fix. 上杆时感觉重心压进后脚跟，让顶点的脊柱略微倒向远离目标的一侧——就是巡回赛那种压在球后方、蓄满力的样子。放慢练：半速上杆、到顶点停一下，确认压力在后脚下再下杆。正面视角重拍——顶点的倾斜由倒向目标翻转成略微背离目标，就对了。",
+      focus: "posture",
+    });
   return f;
 }
 
 export function watchNotes(m: Metrics): string[] {
   const notes: string[] = [];
-  if (Math.abs(m.secondaryTiltDeg) > 15)
+  // These two are the SOFT tier of the posture signals — the confident cases (right view
+  // past a clear angle) become teacher faults in flagFaults; here we keep only what's left:
+  // the borderline band, or the right number seen from the view that can't stand behind it.
+  if (Math.abs(m.secondaryTiltDeg) > 15 && !(m.view === "down-the-line" && m.secondaryTiltDeg > 20))
     notes.push(
       `Spine angle changes ${sign(m.secondaryTiltDeg)}° from address to impact — if you filmed down-the-line, a big stand-up can mean early extension (thins/shanks). Confirm with a clean DTL clip. · 脊柱角度从瞄球到触球变化了 ${sign(m.secondaryTiltDeg)}°——若是后方视角（DTL）拍摄，明显起身可能是提前伸展（early extension，易打薄/打 shank），建议用一段清晰的后方视角再确认。`
     );
-  if (m.reverseSpineDeg > 10)
+  if (m.reverseSpineDeg > 10 && !(m.view === "face-on" && m.reverseSpineDeg > 14))
     notes.push(
       `Upper body may lean toward the target at the top (~${m.reverseSpineDeg.toFixed(0)}°) — possible reverse pivot; confirm on a DTL clip. · 上杆顶点时上半身可能倒向目标方向（约 ${m.reverseSpineDeg.toFixed(0)}°），可能是反向重心转移（reverse pivot），用后方视角确认一下。`
     );
