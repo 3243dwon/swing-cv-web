@@ -117,6 +117,40 @@ describe("flagFaults", () => {
     expect(flagFaults(metrics({ tempoRatio: NaN }))).toHaveLength(0);
   });
 
+  it("fires early extension only from down-the-line past 20°", () => {
+    expect(flagFaults(metrics({ view: "down-the-line", secondaryTiltDeg: 21 }))).toHaveLength(1);
+    expect(flagFaults(metrics({ view: "down-the-line", secondaryTiltDeg: 20 }))).toHaveLength(0);
+    // face-on the same number is normal side-bend, not a fault
+    expect(flagFaults(metrics({ view: "face-on", secondaryTiltDeg: 30 }))).toHaveLength(0);
+  });
+
+  it("fires reverse pivot only face-on past 14°", () => {
+    expect(flagFaults(metrics({ view: "face-on", reverseSpineDeg: 15 }))).toHaveLength(1);
+    expect(flagFaults(metrics({ view: "face-on", reverseSpineDeg: 14 }))).toHaveLength(0);
+    // down-the-line loses the lateral lean to depth, so we don't fault it there
+    expect(flagFaults(metrics({ view: "down-the-line", reverseSpineDeg: 30 }))).toHaveLength(0);
+  });
+
+  it("fires hip slide face-on past 22%, and yields to the sway fault", () => {
+    const f = flagFaults(metrics({ view: "face-on", hipSlideImpactPct: 23 }));
+    expect(f).toHaveLength(1);
+    expect(f[0].focus).toBe("strike consistency"); // relates to a reported thin/fat
+    expect(flagFaults(metrics({ view: "face-on", hipSlideImpactPct: 22 }))).toHaveLength(0);
+    // down-the-line can't see lateral slide honestly
+    expect(flagFaults(metrics({ view: "down-the-line", hipSlideImpactPct: 30 }))).toHaveLength(0);
+    // if the sway fault already fired, the slide fault steps aside (no double lateral flag)
+    expect(flagFaults(metrics({ view: "face-on", hipSlideImpactPct: 30, headSwayPct: 20 }))).toHaveLength(1);
+  });
+
+  it("posture faults carry the full bilingual shape and a posture focus", () => {
+    const f = flagFaults(metrics({ view: "down-the-line", secondaryTiltDeg: 25 }));
+    expect(f).toHaveLength(1);
+    expect(f[0].focus).toBe("posture"); // stays clear of applyOutcome's slice/strike matching
+    expect(f[0].title).toContain("·");
+    for (const k of ["title", "mishit", "detail", "fix", "focus"] as const)
+      expect(f[0][k].length).toBeGreaterThan(0);
+  });
+
   it("every fault carries the full bilingual shape", () => {
     const f = flagFaults(metrics({ headSwayPct: 30, headVertPct: 30, tempoRatio: 1.2 }));
     expect(f.length).toBe(3);
@@ -140,6 +174,17 @@ describe("watchNotes", () => {
   });
   it("notes a possible reverse pivot", () => {
     expect(watchNotes(metrics({ reverseSpineDeg: 12 }))).toHaveLength(1);
+  });
+  it("hands the confident cases to the fault, keeping only the soft tier as a note", () => {
+    // DTL past 20° is the early-extension fault, so the note steps aside…
+    expect(watchNotes(metrics({ view: "down-the-line", secondaryTiltDeg: 25 }))).toHaveLength(0);
+    // …but the 15–20 borderline, and any face-on tilt (normal side-bend), stay notes.
+    expect(watchNotes(metrics({ view: "down-the-line", secondaryTiltDeg: 18 }))).toHaveLength(1);
+    expect(watchNotes(metrics({ view: "face-on", secondaryTiltDeg: 25 }))).toHaveLength(1);
+    // Face-on past 14° is the reverse-pivot fault; the borderline and DTL stay notes.
+    expect(watchNotes(metrics({ view: "face-on", reverseSpineDeg: 16 }))).toHaveLength(0);
+    expect(watchNotes(metrics({ view: "face-on", reverseSpineDeg: 12 }))).toHaveLength(1);
+    expect(watchNotes(metrics({ view: "down-the-line", reverseSpineDeg: 16 }))).toHaveLength(1);
   });
 });
 

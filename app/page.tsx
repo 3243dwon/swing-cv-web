@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { analyzeSwing, PHASES, type Analysis, type PhaseName } from "@/lib/analysis";
+import { analyzeSwing, PHASES, type Analysis, type Fault, type PhaseName } from "@/lib/analysis";
 import {
   createLandmarker,
   extractLandmarks,
@@ -44,6 +44,7 @@ import GhostHero from "@/components/GhostHero";
 import Thread from "@/components/Thread";
 import Reveal from "@/components/Reveal";
 import CountUp from "@/components/CountUp";
+import CoachCard from "@/components/CoachCard";
 
 function Chars({ text, from = 0 }: { text: string; from?: number }) {
   let i = from;
@@ -59,6 +60,31 @@ function Chars({ text, from = 0 }: { text: string; from?: number }) {
         </span>
       ))}
     </>
+  );
+}
+
+// One fault row, shared by the strike list and the posture block. The drill (`fix`)
+// is withheld on a low-confidence track — same silence gate every prescription obeys.
+function FaultFlag({ f, lowConf }: { f: Fault; lowConf: boolean }) {
+  return (
+    <div className="flag">
+      <div className="icon">!</div>
+      <div className="body">
+        <div className="t">{f.title}</div>
+        <div className="d">→ {f.mishit}</div>
+        <div className="d">{f.detail}</div>
+        {f.reported && (
+          <div className="d" style={{ marginTop: 6, color: "#62d6ff" }}>
+            <b>You reported · 你的反馈：</b> {f.reported}
+          </div>
+        )}
+        {f.fix && !lowConf && (
+          <div className="d" style={{ marginTop: 6 }}>
+            <b style={{ color: "#5fd36a" }}>Try this · 这样练：</b> {f.fix}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -553,6 +579,11 @@ export default function Page() {
   const baseFaults = cur ? [...cur.analysis.faults, ...(clubFaultLive ? [clubFaultLive] : [])] : [];
   const { faults: allFaults, note: outcomeNote } = applyOutcome(baseFaults, selOutcome, hand, lowConf);
   const topFault = allFaults[0];
+  // Split for display only (priority order / the practice plan still ride the full list):
+  // reliably-measured strike & tempo faults, vs the depth-estimated posture faults, which
+  // get their own hedged block so an estimate never sits next to a measured fact unlabeled.
+  const strikeFaults = allFaults.filter((f) => f.focus !== "posture");
+  const postureFaults = allFaults.filter((f) => f.focus === "posture");
   // Good/okay/needs-work ratings + a data-driven suggestive read of the metrics.
   const mread = m ? readMetrics(m, cur.analysis.speed, selClub) : null;
   const idle = stage === "idle" || stage === "done" || stage === "error";
@@ -983,6 +1014,19 @@ export default function Page() {
             {m.spineTopDeg.toFixed(0)}° → {m.spineImpactDeg.toFixed(0)}°。
           </p>
 
+          {mread && (
+            <Reveal>
+              <CoachCard
+                analysis={cur.analysis}
+                mread={mread}
+                faults={allFaults}
+                club={selClub}
+                hand={hand}
+                outcome={selOutcome}
+              />
+            </Reveal>
+          )}
+
           <Glossary />
 
           <Reveal>
@@ -1012,31 +1056,31 @@ export default function Page() {
             <div className="section-title">Faults that actually cost strokes 真正让你丢杆的问题</div>
             {allFaults.length > 0 ? (
               <>
-                <p className="note" style={{ marginTop: -2 }}>
-                  Filtered to <b>destructive mishits</b>, not cosmetic positions — amateurs lose strokes to bad contact,
-                  not to an unpretty backswing. 只筛<b>破坏性失误</b>，不挑姿势好不好看——业余丢杆是因为触球差，不是因为
-                  上杆不漂亮。
-                </p>
-                {allFaults.map((f) => (
-                <div className="flag" key={f.title}>
-                  <div className="icon">!</div>
-                  <div className="body">
-                    <div className="t">{f.title}</div>
-                    <div className="d">→ {f.mishit}</div>
-                    <div className="d">{f.detail}</div>
-                    {f.reported && (
-                      <div className="d" style={{ marginTop: 6, color: "#62d6ff" }}>
-                        <b>You reported · 你的反馈：</b> {f.reported}
-                      </div>
-                    )}
-                    {f.fix && !lowConf && (
-                      <div className="d" style={{ marginTop: 6 }}>
-                        <b style={{ color: "#5fd36a" }}>Try this · 这样练：</b> {f.fix}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                ))}
+                {strikeFaults.length > 0 && (
+                  <>
+                    <p className="note" style={{ marginTop: -2 }}>
+                      Filtered to <b>destructive mishits</b>, not cosmetic positions — amateurs lose strokes to bad
+                      contact, not to an unpretty backswing. 只筛<b>破坏性失误</b>，不挑姿势好不好看——业余丢杆是因为触球差，
+                      不是因为上杆不漂亮。
+                    </p>
+                    {strikeFaults.map((f) => (
+                      <FaultFlag key={f.title} f={f} lowConf={lowConf} />
+                    ))}
+                  </>
+                )}
+                {postureFaults.length > 0 && (
+                  <>
+                    <div className="section-title">Posture 体态 · single-camera estimate 单摄像头估算</div>
+                    <p className="note" style={{ marginTop: -2 }}>
+                      Spine angles are depth-sensitive estimates from one camera, so treat these as <b>checkpoints</b>,
+                      not verdicts — each is flagged only from the view that can actually see it. 脊柱角度是单摄像头的深度
+                      估算，请当作<b>检查点</b>而非定论——每一项只在能真正看清它的视角下才会标记。
+                    </p>
+                    {postureFaults.map((f) => (
+                      <FaultFlag key={f.title} f={f} lowConf={lowConf} />
+                    ))}
+                  </>
+                )}
               </>
             ) : (
               <div className="flag good">
