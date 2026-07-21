@@ -6,11 +6,13 @@
 // user's report tells the two apart. The rules are deliberately conservative:
 //   • never promote or invent a fault that didn't fire on its own thresholds,
 //   • when the report CONTRADICTS what we measured, hedge — don't reconcile,
+//   • when the report names something the camera structurally CANNOT see (launch
+//     height), relate it only where a measured cause exists — and say so either way,
 //   • on a low-confidence trace, log the report but relate it to nothing.
 import type { Fault } from "./analysis";
 import type { Hand } from "./club";
 
-export type Outcome = "flush" | "slice" | "hook" | "pull" | "push" | "thin" | "fat";
+export type Outcome = "flush" | "slice" | "hook" | "pull" | "push" | "thin" | "fat" | "low";
 
 const PATH_FOCUS = "slice / swing path";
 const STRIKE_FOCUS = "strike consistency";
@@ -35,6 +37,7 @@ export function outcomeChips(hand: Hand): { key: Outcome; label: string }[] {
     { key: "hook", label: `Hook · 弯向${strongZh} (${strongEn})` },
     { key: "pull", label: `Pull · 直接偏${strongZh} (${strongEn})` },
     { key: "push", label: `Push · 直接偏${weakZh} (${weakEn})` },
+    { key: "low", label: "Low flight · 弹道低/冲不起来" },
     { key: "thin", label: "Thin/top · 打薄/剃头" },
     { key: "fat", label: "Fat/chunk · 打肥/剁地" },
   ];
@@ -48,6 +51,7 @@ const NAME: Record<Outcome, { en: string; zh: string }> = {
   push: { en: "push", zh: "推球" },
   thin: { en: "thin/topped strike", zh: "打薄/剃头" },
   fat: { en: "fat/chunked strike", zh: "打肥/剁地" },
+  low: { en: "low ball flight", zh: "低弹道" },
 };
 
 const sliceClause =
@@ -61,6 +65,20 @@ function strikeClause(o: "thin" | "fat"): string {
   const nameZh = o === "fat" ? "打肥" : "打薄";
   return `You told us this one was ${nameEn} — that fits the moving low-point we flagged above, which is exactly the fat/thin pattern. · 你告诉我们这一杆${nameZh}了——这和上面标记的低点移动一致，正是打肥/打薄的成因。`;
 }
+
+// Launch height is the report the camera is FURTHEST from: it's set by dynamic loft,
+// where the ball meets the face, and attack angle — a pose trace sees none of the three.
+// So `low` never gets the confident voice thin/fat get. It relates ONLY to a measured
+// moving low point (a thin strike really does fly low and run), and even then it says
+// "consistent", not "this is why". Deliberately NOT matched to the posture faults: early
+// extension would fit, but its focus is shared with reverse pivot, which causes the
+// OPPOSITE miss (weak and high) — matching on that focus would relate half of them
+// backwards, and a wrong relation is worse here than no relation.
+const lowFlightClause =
+  "You told us this one came out low. Launch height comes from dynamic loft, where the ball meets the face, and attack angle — a single camera sees none of them, so we're not claiming to have measured it. What we can say: the moving low point flagged above thins the strike, and a thin strike does fly low and run. Treat that as consistent, not conclusive — steady the low point and watch whether the flight comes up. · 你告诉我们这一杆弹道低。起飞高度取决于动态 loft、击球点在杆面上的位置和攻角——单摄像头一个都看不到，所以我们不会声称量到了它。我们能说的是：上面标记的低点移动会让触球变薄，而打薄确实又低又滚。请当作「吻合」而非「定论」——先把低点稳住，再看弹道会不会起来。";
+
+const noLowFlightNote =
+  "You reported a low flight, and we won't pretend we measured it — launch height comes from dynamic loft, strike location on the face and attack angle, none of which a single camera can see. We also didn't flag a moving low point on this swing, which is the one cause we could honestly have related it to. Two things worth knowing anyway: a low iron flight is often not a fault at all (modern iron lofts are far stronger than they used to be, and a penetrating flight wins in wind), and your own divot is free data — if it starts behind the ball rather than in front of it, you're hitting up on it. · 你反馈这一杆弹道低，我们不会假装量到了——起飞高度取决于动态 loft、击球点在杆面上的位置和攻角，单摄像头一个都看不到。这一杆我们也没有标记出低点移动，而那是唯一能诚实地和它关联的原因。但有两件事值得知道：铁杆弹道低往往根本不是毛病（现代铁杆的 loft 比过去强得多，低平弹道在风里反而是优势），另外你自己的草皮痕迹是免费数据——如果它从球的后方而不是前方开始，说明你在往上捞。";
 
 function noPathNote(o: Outcome): string {
   const n = NAME[o];
@@ -120,6 +138,12 @@ export function applyOutcome(
   if (outcome === "thin" || outcome === "fat") {
     if (strikeFault) return { faults: promote(faults, strikeFault, strikeClause(outcome)), note: null };
     return { faults, note: noStrikeNote(outcome) };
+  }
+  // Flight height rides on the same low-point verdict, but hedged a tier further down —
+  // see lowFlightClause. No measured low-point movement means no relation at all.
+  if (outcome === "low") {
+    if (strikeFault) return { faults: promote(faults, strikeFault, lowFlightClause), note: null };
+    return { faults, note: noLowFlightNote };
   }
   return { faults, note: null };
 }
