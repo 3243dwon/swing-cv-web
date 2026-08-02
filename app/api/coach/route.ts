@@ -9,6 +9,7 @@
 // (and a 30-day-retention org — Fable 5 is not available under zero data retention).
 import Anthropic from "@anthropic-ai/sdk";
 import { COACH_SYSTEM, coachUserPrompt, sanitizeCoachPayload } from "@/lib/coach";
+import { requireFeature } from "@/lib/entitlement.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // Fable 5 turns can run long; give Vercel headroom.
@@ -29,6 +30,16 @@ export const maxDuration = 60; // Fable 5 turns can run long; give Vercel headro
 //      let alone allowed to inflate the input token bill.
 //   3. sanitizeCoachPayload(), which rebuilds the body from known keys only so nothing
 //      a stranger invented can reach the prompt.
+//
+// Those three ask "is this our app, and is this a swing". A fourth gate now asks the
+// separate question of "is this caller entitled to the feature at all":
+//
+//   4. requireFeature(req, "coach") — the server-side half of lib/entitlement.ts. It
+//      runs BEFORE the body is even read, because an unentitled caller should not get
+//      this route to spend work parsing, judging, or reporting on their payload. Today
+//      it admits everyone (coaching is free, unchanged), so this is a seam, not a
+//      paywall — but it is the seam that makes coaching paid a one-word edit in
+//      lib/entitlement.ts instead of a change to this file.
 //
 // What is deliberately NOT here: the ceiling on a determined attacker who forges an
 // Origin. That is a spend limit on the Anthropic account plus a platform rate limit on
@@ -54,6 +65,11 @@ export async function POST(req: Request) {
   if (!sameOrigin(req)) {
     return new Response("Forbidden.", { status: 403 });
   }
+
+  // "Where from" is settled; now "who". Before any body work — an unentitled caller
+  // gets 402 and this route does no reading, parsing, or spending on their behalf.
+  const denied = await requireFeature(req, "coach");
+  if (denied) return denied;
 
   // What the caller sent is judged before what this deployment happens to hold, so a
   // malformed request reads the same whether or not a key is configured.

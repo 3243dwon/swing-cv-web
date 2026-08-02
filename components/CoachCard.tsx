@@ -11,6 +11,8 @@ import type { Club } from "@/lib/pace";
 import type { Hand } from "@/lib/club";
 import type { Outcome } from "@/lib/outcome";
 import { buildCoachPayload } from "@/lib/coach";
+import { useCan } from "@/lib/entitlement.client";
+import { requiredTier } from "@/lib/entitlement";
 
 const OPT_IN_KEY = "tracky-ai-coach";
 
@@ -24,6 +26,9 @@ type Props = {
 };
 
 export default function CoachCard({ analysis, mread, faults, club, hand, outcome }: Props) {
+  // Whether this feature is open to this account at all. Presentation only — the route
+  // asks the same question again server-side, which is the answer that counts.
+  const unlocked = useCan("coach");
   const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState("");
@@ -60,9 +65,13 @@ export default function CoachCard({ analysis, mread, faults, club, hand, outcome
       });
       if (!res.ok || !res.body) {
         setError(
-          res.status === 503
-            ? "AI coaching isn't set up on this server yet. · 服务器尚未启用 AI 教练。"
-            : "Couldn't reach AI coaching right now. · 暂时无法连接 AI 教练。",
+          res.status === 402
+            ? // The server disagreed with what this page was rendering — a tier that
+              // changed or lapsed mid-session. Name it plainly instead of "try again".
+              `AI coaching needs ${requiredTier("coach")}. · AI 教练需要升级后使用。`
+            : res.status === 503
+              ? "AI coaching isn't set up on this server yet. · 服务器尚未启用 AI 教练。"
+              : "Couldn't reach AI coaching right now. · 暂时无法连接 AI 教练。",
         );
         return;
       }
@@ -78,6 +87,25 @@ export default function CoachCard({ analysis, mread, faults, club, hand, outcome
     } finally {
       setLoading(false);
     }
+  }
+
+  // Locked: say what it is and where it's bought, and offer nothing that can't be
+  // honoured here. Checkout lives on the web — every other client only reads the
+  // entitlement it's handed (see lib/entitlement.server.ts).
+  if (!unlocked) {
+    return (
+      <div className="card">
+        <div className="section-title" style={{ marginTop: 0 }}>
+          AI coaching · AI 教练 · Fable 5
+        </div>
+        <p className="note" style={{ marginTop: 0 }}>
+          Turns this page&apos;s numbers into one coaching read. Included with{" "}
+          {requiredTier("coach")}.
+          <br />
+          把这一页的数据变成一段连贯的教练解读，{requiredTier("coach")} 用户可用。
+        </p>
+      </div>
+    );
   }
 
   return (
