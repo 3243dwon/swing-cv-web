@@ -122,6 +122,147 @@ export function coachUserPrompt(p: CoachPayload): string {
   ].join("\n");
 }
 
+// ————— untrusted input —————
+//
+// buildCoachPayload() above is the trusted path: our own numbers, our own reads.
+// But /api/coach is a public POST that spends money on every call, so the JSON that
+// actually arrives there is whatever the caller chose to send. CoachPayload is a
+// TypeScript type — erased at runtime, proving nothing about a parsed body — and
+// coachUserPrompt() stringifies the whole object straight into the prompt. Without
+// this function, any key a stranger invents rides into the model's context.
+//
+// So the payload is REBUILT here rather than checked in place: only known keys are
+// copied across, enums must match exactly, and every free-text read is truncated.
+// Anything else the caller sent simply has nowhere to land.
+
+const VIEWS = new Set<CoachPayload["view"]>(["face-on", "down-the-line"]);
+const CONFIDENCES = new Set<CoachPayload["confidence"]>(["high", "low"]);
+const CLUBS = new Set<Club>(["driver", "iron", "wedge", "putt"]);
+const HANDS = new Set<Hand>(["R", "L"]);
+const OUTCOMES = new Set<Outcome>([
+  "flush", "slice", "hook", "pull", "push", "thin", "fat", "low",
+]);
+
+// The reads are prose from grade.ts, so they can't be enumerated the way the fields
+// above can. They ARE short by construction though, and the cap is what keeps a
+// stranger's text from becoming the bulk of the prompt.
+const MAX_READ_CHARS = 120;
+const MAX_FAULTS = 8;
+const MAX_SEQUENCE_STEPS = 6;
+
+function pick<T extends string>(allowed: ReadonlySet<T>, v: unknown): T | null {
+  return typeof v === "string" && allowed.has(v as T) ? (v as T) : null;
+}
+
+function num(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function text(v: unknown): string | null {
+  return typeof v === "string" ? v.slice(0, MAX_READ_CHARS) : null;
+}
+
+function cleanSequence(v: unknown): CoachPayload["sequence"] {
+  if (typeof v !== "object" || v === null) return null;
+  const s = v as Record<string, unknown>;
+  if (!Array.isArray(s.order)) return null;
+  const order = s.order
+    .filter((x): x is string => typeof x === "string")
+    .slice(0, MAX_SEQUENCE_STEPS)
+    .map((x) => x.slice(0, MAX_READ_CHARS));
+  return { order, textbook: s.textbook === true };
+}
+
+// A malformed fault is dropped rather than failing the whole request: the coaching
+// note is still honest without it, and a partial list beats no card at all.
+function cleanFaults(v: unknown): CoachPayload["faults"] {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, MAX_FAULTS).flatMap((f) => {
+    if (typeof f !== "object" || f === null) return [];
+    const o = f as Record<string, unknown>;
+    const title = text(o.title);
+    const mishit = text(o.mishit);
+    const focus = text(o.focus);
+    if (title === null || mishit === null || focus === null) return [];
+    return [{ title, mishit, focus, reported: text(o.reported) }];
+  });
+}
+
+/**
+ * Rebuild a CoachPayload from untrusted JSON, or null if it isn't one.
+ *
+ * Null means "don't call the model" — the route answers 400. Every field the real
+ * client sends survives the trip unchanged, so a valid payload round-trips exactly.
+ */
+export function sanitizeCoachPayload(raw: unknown): CoachPayload | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.metrics !== "object" || r.metrics === null) return null;
+  const rm = r.metrics as Record<string, unknown>;
+
+  const view = pick(VIEWS, r.view);
+  const confidence = pick(CONFIDENCES, r.confidence);
+  const hand = pick(HANDS, r.hand);
+  const detectedPct = num(r.detectedPct);
+  const tempoRatio = num(rm.tempoRatio);
+  const backswingS = num(rm.backswingS);
+  const downswingS = num(rm.downswingS);
+  const headSwayPct = num(rm.headSwayPct);
+  const headVertPct = num(rm.headVertPct);
+  const spineAddrDeg = num(rm.spineAddrDeg);
+  const spineTopDeg = num(rm.spineTopDeg);
+  const spineImpactDeg = num(rm.spineImpactDeg);
+  const headSwayRead = text(rm.headSwayRead);
+  const headVertRead = text(rm.headVertRead);
+
+  // Everything above is required. One miss and there is no swing to talk about.
+  if (
+    view === null ||
+    confidence === null ||
+    hand === null ||
+    detectedPct === null ||
+    tempoRatio === null ||
+    backswingS === null ||
+    downswingS === null ||
+    headSwayPct === null ||
+    headVertPct === null ||
+    spineAddrDeg === null ||
+    spineTopDeg === null ||
+    spineImpactDeg === null ||
+    headSwayRead === null ||
+    headVertRead === null
+  ) {
+    return null;
+  }
+
+  return {
+    view,
+    confidence,
+    detectedPct,
+    club: pick(CLUBS, r.club),
+    hand,
+    reportedOutcome: pick(OUTCOMES, r.reportedOutcome),
+    overallGood: r.overallGood === true,
+    metrics: {
+      tempoRatio,
+      tempoRead: text(rm.tempoRead),
+      backswingS,
+      downswingS,
+      headSwayPct,
+      headSwayRead,
+      headVertPct,
+      headVertRead,
+      handSpeedRead: text(rm.handSpeedRead),
+      spineAddrDeg,
+      spineTopDeg,
+      spineImpactDeg,
+    },
+    sequence: cleanSequence(r.sequence),
+    xfactorStretchPct: num(r.xfactorStretchPct),
+    faults: cleanFaults(r.faults),
+  };
+}
+
 function round1(n: number): number {
   return Number.isFinite(n) ? Math.round(n * 10) / 10 : n;
 }

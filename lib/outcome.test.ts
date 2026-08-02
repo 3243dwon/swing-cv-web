@@ -73,6 +73,30 @@ describe("applyOutcome — strike reports", () => {
   });
 });
 
+describe("applyOutcome — low flight (the report the camera can't see at all)", () => {
+  it("a reported low flight + a measured moving low point → relate, but hedged, never a loft claim", () => {
+    const r = applyOutcome([tempoFault(), strikeFault()], "low", "R", false);
+    expect(r.faults[0].focus).toBe("strike consistency"); // promoted to front
+    expect(r.faults[0].reported).toContain("dynamic loft"); // names what it did NOT measure
+    expect(r.faults[0].reported).toMatch(/consistent, not conclusive/i);
+    expect(r.note).toBeNull();
+  });
+
+  it("a reported low flight with no strike fault → says it didn't measure it, invents nothing", () => {
+    const r = applyOutcome([tempoFault()], "low", "R", false);
+    expect(r.faults[0].reported).toBeUndefined();
+    expect(r.note).toMatch(/won't pretend|didn't flag/i);
+    expect(r.note).toMatch(/often not a fault/i); // low flight is not automatically a problem
+  });
+
+  it("never relates a low flight to a posture fault — reverse pivot causes the OPPOSITE miss", () => {
+    const postureFault = (): Fault => ({ title: "Reverse pivot", mishit: "m", detail: "d", fix: "f", focus: "posture" });
+    const r = applyOutcome([postureFault()], "low", "R", false);
+    expect(r.faults[0].reported).toBeUndefined();
+    expect(r.note).not.toBeNull();
+  });
+});
+
 describe("applyOutcome — lowConf gate (the kill-switch)", () => {
   it("on a low-confidence trace, a confident report relates to NOTHING", () => {
     const r = applyOutcome([pathFault()], "slice", "R", true);
@@ -82,9 +106,9 @@ describe("applyOutcome — lowConf gate (the kill-switch)", () => {
 });
 
 describe("outcomeChips — handedness-correct labels", () => {
-  it("returns all seven outcomes", () => {
+  it("returns all eight outcomes, grouped straight → direction → height → strike", () => {
     const keys = outcomeChips("R").map((c) => c.key);
-    expect(keys).toEqual<Outcome[]>(["flush", "slice", "hook", "pull", "push", "thin", "fat"]);
+    expect(keys).toEqual<Outcome[]>(["flush", "slice", "hook", "pull", "push", "low", "thin", "fat"]);
   });
 
   it("a right-hander's slice curves toward the right; a left-hander's toward the left", () => {
